@@ -9,7 +9,7 @@ docker build -t "$IMAGE_NAME" .
 if [ "$MODE" = "smoke" ]; then
   FRAMES="${2:-120}"
   docker run --rm "$IMAGE_NAME" \
-    python3 "Game(prototype).py" --smoke-test "$FRAMES" --no-music
+    python3 mega_game.py --smoke-test "$FRAMES" --no-music
   exit 0
 fi
 

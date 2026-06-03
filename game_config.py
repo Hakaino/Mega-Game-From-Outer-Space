@@ -3,6 +3,7 @@
 import json
 import os
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -90,6 +91,26 @@ def save_progress(progress, path=None):
     tmp_path.replace(path)
 
 
+def coerce_int(value, default, minimum=None, maximum=None):
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        result = default
+    if minimum is not None:
+        result = max(minimum, result)
+    if maximum is not None:
+        result = min(maximum, result)
+    return result
+
+
+def coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def load_progress(path=None):
     path = Path(path or configured_progress_path())
     progress = {}
@@ -112,20 +133,26 @@ def load_progress(path=None):
             progress[key] = deepcopy(value)
             changed = True
 
-    for key in ("sizeX", "sizeY", "FPS", "level"):
-        try:
-            progress[key] = int(progress[key])
-        except (TypeError, ValueError):
-            progress[key] = DEFAULT_PROGRESS[key]
-            changed = True
+    old_values = dict(progress)
+    progress["sizeX"] = coerce_int(progress["sizeX"], DEFAULT_PROGRESS["sizeX"], 640, 3840)
+    progress["sizeY"] = coerce_int(progress["sizeY"], DEFAULT_PROGRESS["sizeY"], 480, 2160)
+    progress["FPS"] = coerce_int(progress["FPS"], DEFAULT_PROGRESS["FPS"], 15, 240)
+    progress["level"] = coerce_int(progress["level"], DEFAULT_PROGRESS["level"])
 
     for key in ("P1_keyboard", "P2_keyboard", "multiplayer", "music"):
-        progress[key] = bool(progress[key])
+        progress[key] = coerce_bool(progress[key])
 
     for key in ("P1_keys", "P2_keys"):
         if not isinstance(progress[key], list) or len(progress[key]) != 15:
             progress[key] = deepcopy(DEFAULT_PROGRESS[key])
             changed = True
+
+    levels = available_levels()
+    if progress["level"] not in levels:
+        progress["level"] = levels[0]
+
+    if progress != old_values:
+        changed = True
 
     if changed:
         save_progress(progress, path)
@@ -133,10 +160,21 @@ def load_progress(path=None):
     return progress, path
 
 
+@lru_cache(maxsize=1)
 def load_level_rows():
     with LEVELS_PATH.open("r", encoding="utf-8") as levels_file:
         payload = json.load(levels_file)
-    return payload["levels"]
+    levels = payload.get("levels")
+    if not isinstance(levels, dict) or not levels:
+        raise ValueError(f"No levels are defined in {LEVELS_PATH}")
+    for level_number, rows in levels.items():
+        if not str(level_number).isdigit():
+            raise ValueError(f"Level key must be numeric: {level_number!r}")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError(f"Level {level_number} must contain at least one row")
+        if not all(isinstance(row, str) for row in rows):
+            raise ValueError(f"Level {level_number} rows must be strings")
+    return levels
 
 
 def available_levels():
@@ -163,8 +201,6 @@ def build_level(level_number, size_y, block_side=BLOCK_SIDE):
     background = []
 
     for line, row in enumerate(reversed(rows)):
-        if isinstance(row, list):
-            row = row[0]
         for column, tile in enumerate(row):
             thing = TILE_TYPES.get(tile)
             if thing is None:

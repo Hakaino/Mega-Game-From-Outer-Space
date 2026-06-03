@@ -3,16 +3,23 @@
 import argparse
 from copy import deepcopy
 
-from game_config import DEFAULT_PROGRESS, load_progress, save_progress
+from game_config import DEFAULT_PROGRESS, available_levels, load_progress, save_progress
+
+
+def positive_int(value):
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Edit Mega Game progress.json")
     parser.add_argument("--reset", action="store_true", help="restore default progress")
-    parser.add_argument("--level", type=int, choices=(1, 2), help="level to start on")
-    parser.add_argument("--width", type=int, help="window width")
-    parser.add_argument("--height", type=int, help="window height")
-    parser.add_argument("--fps", type=int, help="frame cap")
+    parser.add_argument("--level", type=int, choices=available_levels(), help="level to start on")
+    parser.add_argument("--width", type=positive_int, help="window width")
+    parser.add_argument("--height", type=positive_int, help="window height")
+    parser.add_argument("--fps", type=positive_int, help="frame cap")
     parser.add_argument("--music", dest="music", action="store_true", help="enable music")
     parser.add_argument("--no-music", dest="music", action="store_false", help="disable music")
     parser.add_argument(

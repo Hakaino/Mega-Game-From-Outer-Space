@@ -23,4 +23,4 @@ USER game
 VOLUME ["/data"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["python3", "Game(prototype).py"]
+CMD ["python3", "mega_game.py"]

@@ -8,7 +8,7 @@ Install Pygame, then start the game:
 
 ```bash
 python3 -m pip install -r requirements.txt
-python3 "Game(prototype).py"
+python3 mega_game.py
 ```
 
 Progress is stored in `progress.json` by default. To edit it:
@@ -18,6 +18,13 @@ python3 edit_progress.py --level 1 --width 1024 --height 768
 ```
 
 Level layouts live in `levels/levels.json`.
+
+## Check The Code
+
+```bash
+python3 -m unittest discover -s tests
+python3 level_tools.py
+```
 
 ## Run In Docker
 
