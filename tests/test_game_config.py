@@ -9,6 +9,7 @@ from game_config import (
     DEFAULT_PROGRESS,
     available_levels,
     build_level,
+    load_level_rows,
     load_progress,
     next_level,
     save_progress,
@@ -20,10 +21,34 @@ class GameConfigTests(unittest.TestCase):
     def test_build_level_finds_expected_content(self):
         blocks, foes, background = build_level(2, 768)
 
-        self.assertGreater(len(blocks), 300)
+        self.assertGreater(len(blocks), 150)
         self.assertEqual(len(foes), 3)
         self.assertEqual(len(background), 2)
+        self.assertEqual(sum(1 for block in blocks if block[0] == "goal"), 1)
+        self.assertEqual(sum(1 for block in blocks if block[0] == "door"), 0)
         self.assertEqual(blocks[0][0], "ground")
+
+    def test_six_levels_are_available(self):
+        self.assertEqual(available_levels(), [1, 2, 3, 4, 5, 6])
+
+    def test_each_level_has_one_supported_exit(self):
+        rows_by_level = load_level_rows()
+
+        for level_number, rows in rows_by_level.items():
+            with self.subTest(level=level_number):
+                widths = {len(row) for row in rows}
+                goals = [
+                    (row_index, column)
+                    for row_index, row in enumerate(rows)
+                    for column, tile in enumerate(row)
+                    if tile == "e"
+                ]
+                self.assertEqual(len(widths), 1)
+                self.assertEqual(len(goals), 1)
+
+                row_index, column = goals[0]
+                self.assertLess(row_index + 1, len(rows))
+                self.assertIn(rows[row_index + 1][column], "gpw")
 
     def test_next_level_wraps(self):
         levels = available_levels()
@@ -77,7 +102,7 @@ class GameConfigTests(unittest.TestCase):
         with redirect_stdout(output):
             summarize_level(1)
 
-        self.assertIn("Level 1: 243 blocks, 2 foes, 0 background sprites", output.getvalue())
+        self.assertIn("Level 1: 123 blocks, 2 foes, 0 background sprites, 1 exit", output.getvalue())
 
 
 if __name__ == "__main__":

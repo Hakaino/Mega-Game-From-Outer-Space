@@ -20,6 +20,7 @@ import pygame
 from game_config import (
     BASE_DIR,
     BLOCK_SIDE,
+    available_levels,
     build_level,
     load_progress,
     next_level,
@@ -31,8 +32,14 @@ PYGAME_READY = False
 
 BLACK = (0, 0, 0)
 BLUE = (0, 0, 255)
+CYAN = (60, 220, 255)
+GOLD = (255, 200, 70)
+GREEN = (70, 220, 120)
+RED = (230, 80, 80)
 SKY = (60, 95, 140)
 TRANSPARENT = (0, 0, 0, 0)
+WHITE = (245, 248, 255)
+PANEL = (12, 18, 28, 220)
 
 MAX_HP = 50
 MAX_MAGIC = 50
@@ -52,7 +59,9 @@ KEY_DOWN = 14
 
 
 class RestartGame(Exception):
-    pass
+    def __init__(self, level=None):
+        super().__init__()
+        self.level = level
 
 
 class QuitGame(Exception):
@@ -78,6 +87,7 @@ def initialize_pygame():
 
 @dataclass
 class Assets:
+    world_background: pygame.Surface
     pause: pygame.Surface
     blocks: pygame.Surface
     loading: pygame.Surface
@@ -214,8 +224,22 @@ class Block(pygame.sprite.Sprite):
         self.image = pygame.Surface(BLOCK_SIZE, pygame.SRCALPHA)
         self.rect = self.image.get_rect()
         self.image.blit(game.assets.blocks, self.SPRITE_OFFSET[self.kind])
+        self.decorate()
         self.x = info[1]
         self.rect.centery = info[2]
+
+    def decorate(self):
+        if self.kind == "goal":
+            pygame.draw.circle(self.image, GOLD, (BLOCK_SIDE // 2, BLOCK_SIDE // 2), 25, 4)
+            pygame.draw.circle(self.image, (255, 245, 160, 110), (BLOCK_SIDE // 2, BLOCK_SIDE // 2), 14)
+        elif self.kind == "door":
+            pygame.draw.rect(self.image, CYAN, [12, 6, 40, 52], 3, border_radius=4)
+            pygame.draw.circle(self.image, CYAN, (44, 34), 3)
+        elif self.kind == "heal":
+            pygame.draw.rect(self.image, RED, [28, 14, 8, 36])
+            pygame.draw.rect(self.image, RED, [14, 28, 36, 8])
+        elif self.kind == "platform":
+            pygame.draw.line(self.image, (210, 230, 240), (5, 10), (58, 10), 2)
 
     def update(self):
         self.rect.centerx = self.x + self.game.hero.x
@@ -229,7 +253,9 @@ class Attack(pygame.sprite.Sprite):
         self.game = game
         size = BLOCK_SIDE // 6
         self.image = pygame.Surface((size, size), pygame.SRCALPHA)
-        self.image.fill(BLUE)
+        center = (size // 2, size // 2)
+        pygame.draw.circle(self.image, (90, 190, 255), center, size // 2)
+        pygame.draw.circle(self.image, (220, 245, 255), center, max(1, size // 3))
         self.rect = self.image.get_rect()
 
         distance = BLOCK_SIDE / 1.5
@@ -469,9 +495,11 @@ class Player(pygame.sprite.Sprite):
     def bonus(self):
         for item in pygame.sprite.spritecollide(self, self.game.items, False):
             if item.type == "goal":
-                self.game.progress["level"] = next_level(self.game.level)
+                next_level_number = next_level(self.game.level)
+                self.game.progress["level"] = next_level_number
                 save_progress(self.game.progress, self.game.progress_file)
-                raise RestartGame
+                print(f"Level {self.game.level} complete. Next level: {next_level_number}")
+                raise RestartGame(next_level_number)
             if item.type == "heal":
                 item.kill()
                 self.game.sounds.heal.play()
@@ -612,6 +640,16 @@ class GameSession:
 
         self.assets = self.load_assets()
         self.sounds = self.load_sounds()
+        self.font = pygame.font.SysFont("arial", 22)
+        self.small_font = pygame.font.SysFont("arial", 16)
+        self.title_font = pygame.font.SysFont("arial", 38, bold=True)
+        self.pause_options = [
+            ("Resume", "resume"),
+            ("Restart Level", "restart"),
+            ("Quit Game", "quit"),
+        ]
+        self.pause_index = 0
+        self.pause_snapshot = None
         self.music_loaded = self.music_enabled and load_music("sound", "music", "Paint It Black.mp3")
         if self.music_loaded:
             pygame.mixer.music.set_volume(0.3)
@@ -646,6 +684,7 @@ class GameSession:
 
     def load_assets(self):
         return Assets(
+            world_background=load_image("img", "64", "Background 1.png"),
             pause=load_image("img", "64", "Pause.png"),
             blocks=load_image("img", "64", "Blocks.png"),
             loading=load_image("img", "64", "Loading.png"),
@@ -714,23 +753,53 @@ class GameSession:
             if event.type == pygame.KEYDOWN:
                 self.held_keys.add(event.key)
                 self.pressed_keys.add(event.key)
-                if event.key == pygame.K_F1:
+                if self.pause:
+                    self.handle_pause_key(event.key)
+                elif event.key == pygame.K_F1:
                     pygame.display.toggle_fullscreen()
-                elif event.key == pygame.K_F2:
-                    self.toggle_pause()
+                elif event.key in (pygame.K_F2, pygame.K_ESCAPE):
+                    self.open_pause()
             elif event.type == pygame.KEYUP:
                 self.held_keys.discard(event.key)
             elif event.type == pygame.VIDEORESIZE:
                 self.size_x, self.size_y = event.size
                 self.screen = pygame.display.set_mode(event.size, pygame.RESIZABLE)
 
-    def toggle_pause(self):
-        self.pause = not self.pause
+    def open_pause(self):
+        self.pause = True
+        self.pause_index = 0
+        self.pause_snapshot = self.screen.copy()
         if self.music_loaded:
-            if self.pause:
-                pygame.mixer.music.pause()
-            else:
-                pygame.mixer.music.unpause()
+            pygame.mixer.music.pause()
+
+    def close_pause(self):
+        self.pause = False
+        self.pause_snapshot = None
+        self.held_keys.clear()
+        self.pressed_keys.clear()
+        if self.music_loaded:
+            pygame.mixer.music.unpause()
+
+    def handle_pause_key(self, key):
+        if key in (pygame.K_ESCAPE, pygame.K_F2):
+            self.close_pause()
+        elif key in (pygame.K_DOWN, pygame.K_s):
+            self.pause_index = (self.pause_index + 1) % len(self.pause_options)
+        elif key in (pygame.K_UP, pygame.K_w):
+            self.pause_index = (self.pause_index - 1) % len(self.pause_options)
+        elif key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE, pygame.K_g):
+            self.activate_pause_option()
+
+    def activate_pause_option(self):
+        action = self.pause_options[self.pause_index][1]
+        if action == "resume":
+            self.close_pause()
+        elif action == "restart":
+            print("restart")
+            raise RestartGame(self.level)
+        elif action == "quit":
+            print("quit")
+            raise QuitGame
 
     def spawn_visible(self):
         left_bound = -self.hero.x - BLOCK_SIDE
@@ -799,17 +868,31 @@ class GameSession:
         width = 220
         height = 10
         fill_width = int(width * clamp(value, 0, maximum) / maximum)
-        pygame.draw.rect(self.screen, (20, 20, 20), [x, y, width, height], 0)
-        pygame.draw.rect(self.screen, color, [x, y, fill_width, height], 0)
+        pygame.draw.rect(self.screen, (15, 20, 30), [x, y, width, height], 0, border_radius=4)
+        pygame.draw.rect(self.screen, color, [x, y, fill_width, height], 0, border_radius=4)
+        pygame.draw.rect(self.screen, (220, 230, 240), [x, y, width, height], 1, border_radius=4)
 
     def draw_player_hud(self, player, image, x, y, hp_color):
+        panel = pygame.Surface((308, 112), pygame.SRCALPHA)
+        panel.fill((8, 14, 24, 160))
+        pygame.draw.rect(panel, (160, 185, 210), panel.get_rect(), 1, border_radius=6)
+        self.screen.blit(panel, (x, y))
         self.screen.blit(image, (x, y))
         hp = clamp(player.hp, 0, MAX_HP)
         magic = clamp(player.magic, 0, MAX_MAGIC)
+        self.draw_text("HP", x + 88, y + 25, self.small_font)
+        self.draw_text("Magic", x + 88, y + 62, self.small_font)
         self.draw_meter(x + 88, y + 48, hp, MAX_HP, hp_color(hp))
         self.draw_meter(x + 88, y + 81, magic, MAX_MAGIC, (0, int(50 - magic), int(magic * 5)))
 
+    def draw_text(self, text, x, y, font=None, color=WHITE):
+        font = font or self.font
+        surface = font.render(text, True, color)
+        self.screen.blit(surface, (x, y))
+
     def draw_hud(self):
+        self.draw_text(f"Level {self.level}", 18, 14, self.font)
+        self.draw_text("Reach the glowing exit portal", 18, 40, self.small_font, (215, 230, 245))
         p1_x = max(10, self.size_x - 320)
         if self.player1 is not None:
             self.draw_player_hud(
@@ -828,9 +911,19 @@ class GameSession:
                 lambda hp: (int(hp * 5), 0, int(50 - hp)),
             )
 
-    def draw_active_frame(self):
+    def draw_world_background(self):
         self.screen.fill(SKY)
-        self.draw_hud()
+        bg = self.assets.world_background
+        width = bg.get_width()
+        y = max(0, self.size_y - bg.get_height())
+        offset = int((self.hero.x * 0.18) % width)
+        x = -offset
+        while x < self.size_x:
+            self.screen.blit(bg, (x, y))
+            x += width
+
+    def draw_active_frame(self):
+        self.draw_world_background()
         self.background.update()
         self.players.update()
         self.enemies.update()
@@ -841,22 +934,46 @@ class GameSession:
         self.solids.draw(self.screen)
         self.enemies.draw(self.screen)
         self.players.draw(self.screen)
+        self.draw_hud()
 
     def draw_pause_frame(self):
-        self.screen.blit(self.assets.pause, (0, 0))
-        for player in self.players:
-            player.control()
-            if player.pause_request:
-                print("continue")
-                self.toggle_pause()
-            elif player.direction[0] < 0:
-                print("restart")
-                raise RestartGame
-            elif player.direction[1] > 0:
-                print("options")
-            elif player.direction[1] < 0:
-                print("quit")
-                raise QuitGame
+        if self.pause_snapshot:
+            self.screen.blit(self.pause_snapshot, (0, 0))
+        else:
+            self.draw_world_background()
+
+        shade = pygame.Surface((self.size_x, self.size_y), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, 155))
+        self.screen.blit(shade, (0, 0))
+
+        panel_width = min(460, self.size_x - 40)
+        panel_height = 300
+        panel_rect = pygame.Rect(
+            (self.size_x - panel_width) // 2,
+            (self.size_y - panel_height) // 2,
+            panel_width,
+            panel_height,
+        )
+        panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+        panel.fill(PANEL)
+        pygame.draw.rect(panel, (160, 190, 220), panel.get_rect(), 1, border_radius=8)
+        self.screen.blit(panel, panel_rect)
+
+        title = self.title_font.render("Paused", True, WHITE)
+        self.screen.blit(title, title.get_rect(center=(self.size_x // 2, panel_rect.top + 55)))
+
+        for index, (label, _action) in enumerate(self.pause_options):
+            option_rect = pygame.Rect(panel_rect.left + 50, panel_rect.top + 105 + index * 52, panel_width - 100, 40)
+            selected = index == self.pause_index
+            if selected:
+                pygame.draw.rect(self.screen, GOLD, option_rect, 0, border_radius=5)
+            pygame.draw.rect(self.screen, (210, 225, 240), option_rect, 1, border_radius=5)
+            color = BLACK if selected else WHITE
+            text = self.font.render(label, True, color)
+            self.screen.blit(text, text.get_rect(center=option_rect.center))
+
+        hint = self.small_font.render("Up/Down select    Enter choose    Esc resume", True, (210, 220, 235))
+        self.screen.blit(hint, hint.get_rect(center=(self.size_x // 2, panel_rect.bottom - 30)))
 
     def run(self):
         self.show_loading()
@@ -913,11 +1030,12 @@ def main(argv=None):
         try:
             GameSession(level=level, max_frames=max_frames, music_enabled=music_enabled).run()
             return 0
-        except RestartGame:
+        except RestartGame as exc:
             if max_frames is not None:
                 return 0
-            level = None
+            level = exc.level
         except QuitGame:
+            pygame.quit()
             return 0
 
 

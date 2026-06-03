@@ -17,7 +17,17 @@ Progress is stored in `progress.json` by default. To edit it:
 python3 edit_progress.py --level 1 --width 1024 --height 768
 ```
 
-Level layouts live in `levels/levels.json`.
+Six stage layouts live in `levels/levels.json`.
+
+## Controls
+
+- Move: `A` / `D`
+- Jump or drop: `W` / `S`
+- Shoot: `Space`
+- Use: `G`
+- Pause: `Esc` or `F2`
+
+The pause menu supports resume, restart level, and quit. Walk into the glowing exit portal to advance to the next level.
 
 ## Check The Code
 
