@@ -1,10 +1,72 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+
+import argparse
+import os
+import random
+import sys
+
+if any(arg == "--smoke-test" or arg.startswith("--smoke-test=") for arg in sys.argv):
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame
-import shelve
-import random
-import copy
+
+from game_config import (
+    BASE_DIR,
+    BLOCK_SIDE,
+    build_level,
+    load_progress,
+    next_level,
+    save_progress,
+)
+
 pygame.init()
+
+
+class RestartGame(Exception):
+    pass
+
+
+class QuitGame(Exception):
+    pass
+
+
+class SilentSound:
+    def play(self):
+        pass
+
+    def set_volume(self, volume):
+        pass
+
+
+def resource_path(*parts):
+    return str(BASE_DIR.joinpath(*parts))
+
+
+def load_image(*parts):
+    return pygame.image.load(resource_path(*parts)).convert_alpha()
+
+
+def load_sound(*parts):
+    if not pygame.mixer.get_init():
+        return SilentSound()
+    try:
+        return pygame.mixer.Sound(resource_path(*parts))
+    except pygame.error as exc:
+        print(f"Could not load sound {'/'.join(parts)}: {exc}")
+        return SilentSound()
+
+
+def load_music(*parts):
+    if not pygame.mixer.get_init():
+        return False
+    try:
+        pygame.mixer.music.load(resource_path(*parts))
+        return True
+    except pygame.error as exc:
+        print(f"Could not load music {'/'.join(parts)}: {exc}")
+        return False
+
 
 #color RGB 0-255
 white = (255, 255, 255)
@@ -17,84 +79,82 @@ yelow = (200, 200, 0)
 blank = (0, 0, 0, 0)
 
 
-def play(instance=False):
+def resolve_key(value):
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        name = value if value.startswith("K_") else f"K_{value}"
+        try:
+            return getattr(pygame, name)
+        except AttributeError as exc:
+            raise ValueError(f"Unknown pygame key name: {value}") from exc
+    raise TypeError(f"Unsupported key value: {value!r}")
+
+
+def resolve_keys(values):
+    return [resolve_key(value) for value in values]
+
+
+def play(instance=False, max_frames=None, music_enabled=True):
 #____________________shelvs________________________________#
-    progress = shelve.open("progress.dat")
-    sizeX = copy.copy(progress["sizeX"])
-    sizeY = copy.copy(progress["sizeY"])
-    FPS = copy.copy(progress["FPS"])
-    level = instance or copy.copy(progress["level"])
-    P1_Keyboard = copy.copy(progress["P1_keyboard"])
-    P2_keyboard = copy.copy(progress["P2_keyboard"])
-    P1_keys = copy.copy(progress["P1_keys"])
-    P2_keys = copy.copy(progress["P2_keys"])
-    multiplayer = copy.copy(progress["multiplayer"])
-    music_on = copy.copy(progress["music"])
-    quest = shelve.open("levels/level" + str(level) + ".dat")
-    block = copy.copy(quest["block"])
-    foes = copy.copy(quest["foes"])
-    back = copy.copy(quest["back"])
-    quest.close()
+    progress, progress_file = load_progress()
+    sizeX = progress["sizeX"]
+    sizeY = progress["sizeY"]
+    FPS = progress["FPS"]
+    level = instance or progress["level"]
+    P1_Keyboard = progress["P1_keyboard"]
+    P2_keyboard = progress["P2_keyboard"]
+    P1_keys = resolve_keys(progress["P1_keys"])
+    P2_keys = resolve_keys(progress["P2_keys"])
+    multiplayer = progress["multiplayer"]
+    music_on = bool(progress["music"] and music_enabled)
+    block, foes, back = build_level(level, sizeY)
 
 #_____________general variables___________________________#
     pause = False
     gravity = 1
     fx_volume = 1
     music_volume = 0.3
-    block_side = 64
+    block_side = BLOCK_SIDE
     block_size = (block_side, block_side)
     edge = 0
 
 #____________________display__________________________________#
     size = (sizeX, sizeY)
     display = pygame.display.set_mode(size, pygame.RESIZABLE)
-    caption = pygame.display.set_caption("Mega Game from Outter Space")
+    pygame.display.set_caption("Mega Game From Outer Space")
     clock = pygame.time.Clock()
 
 #___________________images______________________________________#
 
-    load_pause = pygame.image.load("img/64/Pause.png")
-    load_blocks = pygame.image.load("img/64/Blocks.png")
-    load_loading = pygame.image.load("img/64/Loading.png")
-    load_hp1 = pygame.image.load("img/64/Hp.png")
-    load_hp2 = pygame.image.load("img/64/Hp.png")
-    load_P1 = pygame.image.load("img/64/andromalius-57x88.png")
-    load_P2 = pygame.image.load("img/64/andromalius-57x88.png")
-    load_mage = pygame.image.load("img/64/mage-3-87x110.png")
-    pause_img = pygame.Surface.convert_alpha(load_pause)
-    blocks_img = pygame.Surface.convert_alpha(load_blocks)
-    loading_img = pygame.Surface.convert_alpha(load_loading)
-    hp1_img = pygame.Surface.convert_alpha(load_hp1)
-    hp2_img = pygame.Surface.convert_alpha(load_hp2)
-    P1_img = pygame.Surface.convert_alpha(load_P1)
-    P2_img = pygame.Surface.convert_alpha(load_P2)
-    mage_img = pygame.Surface.convert_alpha(load_mage)
-
+    pause_img = load_image("img", "64", "Pause.png")
+    blocks_img = load_image("img", "64", "Blocks.png")
+    loading_img = load_image("img", "64", "Loading.png")
+    hp1_img = load_image("img", "64", "Hp.png")
+    hp2_img = load_image("img", "64", "Hp.png")
+    P1_img = load_image("img", "64", "andromalius-57x88.png")
+    P2_img = load_image("img", "64", "andromalius-57x88.png")
+    mage_img = load_image("img", "64", "mage-3-87x110.png")
+    enemy_img = load_image("img", "64", "Slime.png")
     #__________________sound___________________________________#
 
-    music_file = "sound/music/Life Burns.mp3"
-    scrash_file = "sound/effects/shoot_crash.wav"
-    shoot_file = "sound/effects/shoot.wav"
-    Pdeath_file = "sound/effects/player_death.wav"
-    heal_file = "sound/effects/hp_bonus.wav"
-    fhit_file = "sound/effects/foe_hit.wav"
-    scrash_fx = pygame.mixer.Sound(scrash_file)
-    shoot_fx = pygame.mixer.Sound(shoot_file)
-    pdeath_fx = pygame.mixer.Sound(Pdeath_file)
-    heal_fx = pygame.mixer.Sound(heal_file)
-    fhit_fx = pygame.mixer.Sound(fhit_file)
-    pygame.mixer.music.load(music_file)
+    scrash_fx = load_sound("sound", "effects", "shoot_crash.wav")
+    shoot_fx = load_sound("sound", "effects", "shoot.wav")
+    pdeath_fx = load_sound("sound", "effects", "player_death.wav")
+    heal_fx = load_sound("sound", "effects", "hp_bonus.wav")
+    fhit_fx = load_sound("sound", "effects", "foe_hit.wav")
+    music_loaded = music_on and load_music("sound", "music", "Paint It Black.mp3")
     scrash_fx.set_volume(fx_volume)
     shoot_fx.set_volume(fx_volume)
     pdeath_fx.set_volume(fx_volume)
     heal_fx.set_volume(fx_volume)
     fhit_fx.set_volume(fx_volume)
-    pygame.mixer.music.set_volume(music_volume)
+    if music_loaded:
+        pygame.mixer.music.set_volume(music_volume)
 
 #____________________Loading_______________________________#
     display.fill(black)
     display.blit(loading_img, (0, 0))
-    caption
     pygame.display.update()
 
 #_____________groups_______________________________________#
@@ -112,17 +172,18 @@ def play(instance=False):
 
     class Movie(object):
         '''makes a clip from a sprite sheet'''
-        step = 0
-        cicle = -1
+        def __init__(self):
+            self.step = 0
+            self.cicle = -1
 
-        def camera(object, steps, width, periude, y):
-            object.cicle += 1
-            if object.cicle >= periude:
-                object.cicle = 0
-                object.step += 1
-                if object.step >= steps:
-                    object.step = 0
-            return (-object.step * width, y)
+        def camera(self, steps, width, periude, y):
+            self.cicle += 1
+            if self.cicle >= periude:
+                self.cicle = 0
+                self.step += 1
+                if self.step >= steps:
+                    self.step = 0
+            return (-self.step * width, y)
 
 #______________building sprites___________________________#
 
@@ -157,28 +218,31 @@ def play(instance=False):
         """Ground, platforms and walls"""
         def __init__(self, info):
             pygame.sprite.Sprite.__init__(self, solids)
-            if info[0] == "heal":
+            tile_type = info[0]
+            if tile_type == "heal":
                 items.add(self)
                 self.type = "heal"
                 img_p = (0, -block_side)
-            if info[0] == "goal":
+            elif tile_type == "goal":
                 items.add(self)
                 self.type = "goal"
                 img_p = (-block_side, -block_side)
-            if info[0] == "door":
+            elif tile_type == "door":
                 items.add(self)
                 self.type = "door"
                 img_p = (-2 * block_side, -block_side)
                 self.command = level + 10  # carried information
-            if info[0] == "ground":
+            elif tile_type == "ground":
                 blocks.add(self)
                 img_p = (-block_side, 0)
-            if info[0] == "platform":
+            elif tile_type == "platform":
                 platforms.add(self)
                 img_p = (0, 0)
-            if info[0] == "wall":
+            elif tile_type == "wall":
                 blocks.add(self)
                 img_p = (-2 * block_side, 0)
+            else:
+                raise ValueError(f"Unknown block type: {tile_type}")
             self.image = pygame.Surface(block_size, pygame.SRCALPHA)
             self.rect = self.image.get_rect()
             self.image.blit(blocks_img, img_p)
@@ -196,19 +260,16 @@ def play(instance=False):
 
         def __init__(self, who):
             pygame.sprite.Sprite.__init__(self, attacks)
-            self.image = pygame.Surface([block_side / 6, block_side / 6])
+            size = block_side // 6
+            self.image = pygame.Surface((size, size), pygame.SRCALPHA)
             self.image.fill(blue)
             self.rect = self.image.get_rect()
             dist = block_side / 1.5
             self.x = who.x + dist * who.direc[0]
-            self.rect.centerx = copy.copy(who.rect.centerx + dist * who.stare)
-            self.rect.centery = copy.copy(who.rect.centery + dist * who.direc[1])
+            self.rect.centerx = int(who.rect.centerx + dist * who.stare)
             self.rect.centery = who.rect.centery
-            if who.direc[1]:
-                x = who.direc[0]
-            else:
-                x = who.stare
-            self.velocity = copy.copy([x, who.direc[1]])
+            x = who.direc[0] if who.direc[1] else who.stare
+            self.velocity = [x, who.direc[1]]
             self.who = who
             self.speed = 20
             self.live = 30
@@ -260,10 +321,7 @@ def play(instance=False):
         def control(self):
             if self.keyboard:
                 key = pygame.key.get_pressed()
-                pressed = []
-                for event in events:
-                    if event.type == pygame.KEYDOWN:
-                        pressed.append(event.key)
+                pressed = {event.key for event in events if event.type == pygame.KEYDOWN}
                 self.action1 = key[self.path[0]]
                 self.action2 = key[self.path[1]]
                 self.action3 = self.path[2] in pressed   # shoot
@@ -295,16 +353,16 @@ def play(instance=False):
                     self.action9 = self.joystick.get_button(9)  # pause
                     self.action10 = self.joystick.get_button(10)
                     self.action11 = self.joystick.get_button(11)
-                    self.direc[0] = int((self.joystick.get_hat(0)[0] * 1.5))
+                    self.direc[0] = int(self.joystick.get_hat(0)[0] * 1.5)
                     if self.direc[0] == 0:
-                        self.direc[0] = int((self.joystick.get_axis(0) * 1.5))
-                    self.direc[1] = int((self.joystick.get_hat(0)[1] * 1.5))
+                        self.direc[0] = int(self.joystick.get_axis(0) * 1.5)
+                    self.direc[1] = int(self.joystick.get_hat(0)[1] * 1.5)
                     if self.direc[1] == 0:
-                        self.direc[1] = - int((self.joystick.get_axis(1) * 1.5))
-                except:
-                    AttributeError
+                        self.direc[1] = -int(self.joystick.get_axis(1) * 1.5)
+                except AttributeError:
+                    pass
             if self.direc[0]:
-                self.stare = copy.copy(self.direc[0])
+                self.stare = self.direc[0]
 
         def physics(self):
             self.in_land = False
@@ -381,7 +439,6 @@ def play(instance=False):
                     self.rect.centerx = self.x + hero.x
             self.accel += gravity * (self.accel < 23)
             self.rect.centery += self.accel
-            solids.update()
 
         def get_hit(self):
             if pygame.sprite.spritecollide(self, enemies, False):
@@ -389,7 +446,7 @@ def play(instance=False):
             if self.hp <= 0 or self.rect.centery >= sizeY:
                 self.hp = 0
                 self.magic = 0
-                print self.x, "foi onde morri"
+                print(self.x, "foi onde morri")
                 self.kill()
                 death.add(self)
                 pdeath_fx.play()
@@ -401,8 +458,8 @@ def play(instance=False):
 #___________teleport
             if self.action7 and self != hero and self.magic >= 50:
                 self.magic -= 50
-                self.x = copy.copy(hero.rect.centerx - hero.x)
-                self.rect.center = copy.copy(hero.rect.center)
+                self.x = hero.rect.centerx - hero.x
+                self.rect.center = hero.rect.center
 #___________shoot
             if self.action3 and a > 5:
                 Attack(self)
@@ -410,11 +467,11 @@ def play(instance=False):
 #___________raise death
             if self.action6 and any(death) and self.magic >= 26:
                 self.magic -= 26
-                self.hp /= 2
+                self.hp //= 2
                 sidekick = death.sprites()[0]
-                death.sprites()[0].x = copy.copy(-hero.x + hero.rect.centerx)
-                death.sprites()[0].rect.center = copy.copy(self.rect.center)
-                death.sprites()[0].hp = copy.copy(self.hp)
+                sidekick.x = -hero.x + hero.rect.centerx
+                sidekick.rect.center = self.rect.center
+                sidekick.hp = self.hp
                 players.add(death.sprites()[0])
                 death.empty()
 
@@ -422,13 +479,9 @@ def play(instance=False):
             got_hit = pygame.sprite.spritecollide(self, items, False)
             for something in got_hit:
                 if something.type == "goal":
-                    if progress["level"] == 1:
-                        progress["level"] = 2
-                    else:
-                        progress["level"] = 1
-##                    progress["level"] += 1
-                    progress.close()
-                    play()
+                    progress["level"] = next_level(level)
+                    save_progress(progress, progress_file)
+                    raise RestartGame
                 if something.type == "heal":
                     something.kill()
                     heal_fx.play()
@@ -471,13 +524,14 @@ def play(instance=False):
                 self.physics()
                 self.animation()
 
-    class Enemy (pygame.sprite.Sprite):
-        """enemies type 1"""
+    class Enemy(pygame.sprite.Sprite):
+        """Enemies"""
+        img = enemy_img
+
         def __init__(self, x0=100, y0=0):
-            pygame.sprite.Sprite.__init__(self, enemies)
-            self.speed = random.randint(-3, 3)
+            super().__init__(enemies)
+            self.speed = random.choice((-3, -2, -1, 1, 2, 3))
             self.hp = random.randint(1, 3)
-            self.img = pygame.image.load("img/64/Slime.png")
             self.image = pygame.Surface(block_size, pygame.SRCALPHA)
             self.rect = self.image.get_rect()
             self.rect.height -= 10
@@ -570,8 +624,8 @@ def play(instance=False):
         try:
             P1.joystick = pygame.joystick.Joystick(0)
             P1.joystick.init()
-        except:
-            pygame.error
+        except pygame.error:
+            pass
     if multiplayer:
         P2 = Player(300, sizeY / 2)
         P2.sheet = P2_img
@@ -584,42 +638,55 @@ def play(instance=False):
             try:
                 P2.joystick = pygame.joystick.Joystick(P1_keyboard)
                 P2.joystick.init()
-            except:
-                pygame.error
-    if music_on:
-        pygame.mixer.music.play()
+            except pygame.error:
+                pass
+    if music_loaded:
+        pygame.mixer.music.play(-1)
     print ("This amazing adventure beguins!")
 
 ###############____main loop____############################################
+    frame_count = 0
     while True:
-        events = copy.copy(pygame.event.get())
+        events = pygame.event.get()
         for event in events:
             if event.type == pygame.QUIT:
                 pygame.quit()
-                progress.close()
+                return
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F1:
                     pygame.display.toggle_fullscreen()
                 if event.key == pygame.K_F2:
-                    pygame.mixer.music.unpause()
+                    if music_loaded:
+                        pygame.mixer.music.unpause()
                     pause = 1 - pause
             if event.type == pygame.VIDEORESIZE:
-                size = copy.copy(event.size)
+                size = event.size
+                display = pygame.display.set_mode(size, pygame.RESIZABLE)
         if not any(players):
-            pygame.mixer.stop()
-            play()
+            if pygame.mixer.get_init():
+                pygame.mixer.stop()
+            raise RestartGame
+
 #____________make stuff_____________________________________#
-        for thing in block:
-            if thing[1] < 1.5 * sizeX - hero.x:
+        left_bound = -hero.x - block_side
+        right_bound = sizeX - hero.x + block_side
+
+        for thing in list(block):
+            if left_bound <= thing[1] <= right_bound:
                 block.remove(thing)
                 Block(thing)
-        for champ in foes:
-            if champ[1] < sizeX - hero.x:
+        for champ in list(foes):
+            if left_bound <= champ[1] <= right_bound:
                 foes.remove(champ)
                 Enemy(champ[1], champ[2])
-        for thing in back:
-            if thing[1] < sizeX - hero.x:
+        for thing in list(back):
+            if left_bound <= thing[1] <= right_bound:
                 back.remove(thing)
+                back_img = mage_img
+                back_size = (87, 110)
+                back_step = 4
+                back_periud = 10
+                back_line = 0
                 if thing[0] == "mage":
                     back_img = mage_img
                     back_size = (87, 110)
@@ -643,14 +710,9 @@ def play(instance=False):
             hero.rect.centerx = sizeX / 2 - cornered
 #_____________update edge____________________________________#
         if len(players) == 1 and edge < -hero.x:
-            edge = copy.copy(-hero.x)
+            edge = -hero.x
         if len(players) == 2:
-            edgeP1 = copy.copy(-hero.x)
-            edgeP2 = copy.copy(sidekick.x - sizeX / 2)
-            if edge < edgeP1 < edgeP2:
-                edge = edgeP1
-            if edge < edgeP2 < edgeP2:
-                edge = edgeP2
+            edge = min(edge, -hero.x, sidekick.x - sizeX / 2)
         if not pause:
             display.fill(stupid)
             display.blit(hp1_img, (block_side * 13, block_side))
@@ -681,27 +743,64 @@ def play(instance=False):
             players.draw(display)
 #________________________Pause______________________________________#
         else:
-            pygame.mixer.music.pause()
+            if music_loaded:
+                pygame.mixer.music.pause()
             display.blit(pause_img, (0, 0))
             for dude in players:
                 dude.control()
                 if dude.action9:  # dude.direc[0] > 0:
                     print ("continue")
-                    pygame.mixer.music.unpause()
+                    if music_loaded:
+                        pygame.mixer.music.unpause()
                     pause = False
                 if dude.direc[0] < 0:
                     print ("restart")
-                    return play()
+                    raise RestartGame
                 if dude.direc[1] > 0:
                     print ("options")
                 if dude.direc[1] < 0:
                     print ("quit")
-                    progress.close()
                     pygame.quit()
+                    raise QuitGame
 
         clock.tick(FPS)
-        sub_display = pygame.transform.scale(display, size)
-        display.blit(sub_display, (0, 0))
-        pygame.display.update((0, 0, size[0], size[1]))
+        pygame.display.update()
+        frame_count += 1
+        if max_frames is not None and frame_count >= max_frames:
+            return
 
-play()
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description="Mega Game From Outer Space")
+    parser.add_argument(
+        "--smoke-test",
+        nargs="?",
+        const=120,
+        type=int,
+        help="run for N frames with dummy SDL drivers, then exit",
+    )
+    parser.add_argument("--level", type=int, help="start a specific level")
+    parser.add_argument("--no-music", action="store_true", help="disable music")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv or sys.argv[1:])
+    max_frames = args.smoke_test
+    music_enabled = not args.no_music and max_frames is None
+    level = args.level
+
+    while True:
+        try:
+            play(instance=level, max_frames=max_frames, music_enabled=music_enabled)
+            return 0
+        except RestartGame:
+            if max_frames is not None:
+                return 0
+            level = None
+        except QuitGame:
+            return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

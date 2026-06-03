@@ -1,0 +1,45 @@
+{
+  "block_side": 64,
+  "legend": {
+    "d": "door",
+    "e": "goal",
+    "g": "ground",
+    "h": "heal",
+    "m": "mage",
+    "p": "platform",
+    "s": "slime",
+    "w": "wall"
+  },
+  "levels": {
+    "1": [
+      "gggggggggggggggggggggggggggggggggggggggggggggggggg",
+      "g                  w         s      e g          g",
+      "g           p  p w w         w      gpgg    s    g",
+      "g     p          w wwwww    ww      w       w    g",
+      "g         p    p w w   w    ww      wp      w p  g",
+      "g                w w   w    ww              w    g",
+      "g      p     p   w w   w    ww  wwwwwp      w p  g",
+      "g                w     w        w d w       w    g",
+      "g         p      w g   wd       w p wpppp   wwwwwg",
+      "g     p       p  wp g  wwwwwwpwwwwwww       w    g",
+      "g                ggpgg                   gggg    g",
+      "g             ggggg pgggg    wwww                g",
+      "ggggggggggggggggggggpggggggggggggggggggggggggggggg"
+    ],
+    "2": [
+      "g                    wgggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+      "g                    w                            w                                    g                                         g",
+      "g                    w                            w                       s            g                    s                    g",
+      "g                    w                            w                                    g                                         g",
+      "g                    w                            w                     gggggggg       g                    ggggg                g",
+      "g                    w                                                 gg              g                         g           e   g",
+      "g                                   m                      m          gwg              g             ppppppp     gg              g",
+      "g                                                                    gwwgggggggggppppppg                         ggg       gggg  g",
+      "g                        s                                      d   gw  h     dg             pppppppp            gggg   ppp      g",
+      "g                                                           gpppgggggggggggggggg                                                 g",
+      "g             ppppppppppppppppppppppp           ppppp  ggg                         pppppppp                           ppp      g",
+      "g                                      h                                                                                         g",
+      "gggggggggggggggggggggggggg   ggggg  ggggggg   gggggg                           ggggggggggggggggggggggggggggggggggggggggggggggggggg"
+    ]
+  }
+}

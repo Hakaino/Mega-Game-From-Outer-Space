@@ -1,49 +1,59 @@
-import shelve
-import pygame
-pygame.init()
-progress = shelve.open("progress.dat")
+#!/usr/bin/env python3
 
-progress["level"] = 1
-progress["block"] = 64 #number of bits in a square block side
-progress["sizeX"] = 1280 #must try to find how to get the best screen resolution
-progress["sizeY"] = 800
-progress["FPS"] = 50
-progress["music"] = False
-progress["multiplayer"] = True
-progress["P1_keyboard"] = True
-progress["P2_keyboard"] = True
+import argparse
+from copy import deepcopy
 
-progress["P1_keys"] = [
-    pygame.K_a,
-    2,
-    pygame.K_SPACE,
-    pygame.K_g,
-    pygame.K_p,
-    pygame.K_r,
-    pygame.K_t,
-     8,
-    pygame.K_ESCAPE,
-    10, 11,
-    pygame.K_d,
-    pygame.K_a,
-    pygame.K_w,
-    pygame.K_s]
+from game_config import DEFAULT_PROGRESS, load_progress, save_progress
 
-progress["P2_keys"] = [
-    pygame.K_a,
-    2,
-    pygame.K_SPACE,
-    pygame.K_g,
-    pygame.K_p,
-    pygame.K_r,
-    pygame.K_t,
-     8,
-    pygame.K_z,#ESCAPE,
-    10, 11,
-    pygame.K_RIGHT,
-    pygame.K_LEFT,
-    pygame.K_UP,
-    pygame.K_DOWN]
 
-progress.close()
-print ("Progress Saved!")
+def parse_args():
+    parser = argparse.ArgumentParser(description="Edit Mega Game progress.json")
+    parser.add_argument("--reset", action="store_true", help="restore default progress")
+    parser.add_argument("--level", type=int, choices=(1, 2), help="level to start on")
+    parser.add_argument("--width", type=int, help="window width")
+    parser.add_argument("--height", type=int, help="window height")
+    parser.add_argument("--fps", type=int, help="frame cap")
+    parser.add_argument("--music", dest="music", action="store_true", help="enable music")
+    parser.add_argument("--no-music", dest="music", action="store_false", help="disable music")
+    parser.add_argument(
+        "--multiplayer",
+        dest="multiplayer",
+        action="store_true",
+        help="enable two players",
+    )
+    parser.add_argument(
+        "--single-player",
+        dest="multiplayer",
+        action="store_false",
+        help="disable two-player mode",
+    )
+    parser.set_defaults(music=None, multiplayer=None)
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    progress, progress_file = load_progress()
+
+    if args.reset:
+        progress = deepcopy(DEFAULT_PROGRESS)
+
+    if args.level is not None:
+        progress["level"] = args.level
+    if args.width is not None:
+        progress["sizeX"] = args.width
+    if args.height is not None:
+        progress["sizeY"] = args.height
+    if args.fps is not None:
+        progress["FPS"] = args.fps
+    if args.music is not None:
+        progress["music"] = args.music
+    if args.multiplayer is not None:
+        progress["multiplayer"] = args.multiplayer
+
+    save_progress(progress, progress_file)
+    print(f"Progress saved to {progress_file}")
+
+
+if __name__ == "__main__":
+    main()

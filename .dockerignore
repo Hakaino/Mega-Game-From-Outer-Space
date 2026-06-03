@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.container-data/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+env/
+venv/
+.git/
+.gitignore
+*.dat
+*.broken
+progress.json
+progress.json.tmp
+Mega Game From Outer Space.zip

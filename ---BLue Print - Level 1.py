@@ -20,13 +20,13 @@ def creator(lvl_n, level):
     print ("With magic I make...")
     for i in range(len(level)):
 
-        if level[i][0] is "slime":
+        if level[i][0] == "slime":
             foes.append((level[i][0], level[i][1] * block_side, level[i][2] * block_side))
 
         if level[i][0] in ("goal", "heal", "door"):
             print ("bonus,")
             bt = [level[i][0], int(level[i][1] * block_side), int(sizeY - level[i][2] * block_side)]
-            if level[i][0] is "door":
+            if level[i][0] == "door":
                 bt.append(level[i][3])
             block.append(bt)
         if level[i][0] in ("mage", "burst"):
@@ -40,7 +40,7 @@ def creator(lvl_n, level):
             for j in range(lenght):
                 block.append((level[i][0], x0 + j * block_side, y0))
 
-        if level[i][0] is "wall":
+        if level[i][0] == "wall":
             lenght = level[i][1]
             x0 = level[i][2] * block_side
             y0 = sizeY - level[i][3] * block_side
@@ -53,7 +53,7 @@ def creator(lvl_n, level):
     lvl_file["foes"] = foes
     lvl_file["bonus"] = bonus
     lvl_file["back"] = back
-    print len(block), "blocks,"
+    print(len(block), "blocks,")
     lvl_file.close()
     progress.close()
     print (("and voila, level " + str(lvl_n) + " was created!"))

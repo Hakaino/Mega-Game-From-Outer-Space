@@ -53,7 +53,7 @@ def creator(lvl_n, level):
     lvl_file["block"] = block
     lvl_file["foes"] = foes
     lvl_file["back"] = back
-    print len(block), "blocks,"
+    print(len(block), "blocks,")
     lvl_file.close()
     progress.close()
     print (("and voila, level " + str(lvl_n) + " was created!"))
